@@ -119,7 +119,7 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
             )
             .fold(
                 LinSrgb::default(),
-                |a, b| a.mix(&b, 0.5)
+                |a, b| a.mix(&b, 1. / (image.height() as f32 * image.width() as f32))
             );
         let image = image::io::Reader::open(path)?.decode()?.resize_exact(self.images_size.0,self.images_size.1, image::imageops::Nearest).to_rgb8();
         self.images.push(image);
