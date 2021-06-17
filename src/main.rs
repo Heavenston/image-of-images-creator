@@ -1,4 +1,5 @@
 mod image_dictionary;
+mod image_of_image_er;
 
 use clap::{Arg, App};
 use std::convert::{TryFrom};
@@ -106,4 +107,7 @@ fn main() {
         });
     let image_dictionary = dict_reader.build_split(splits);
     image_dictionary.save().unwrap();
+
+    let new_image = image_of_image_er::image_of_image(&image_dictionary, &target_image);
+    new_image.save("hello.png").unwrap();
 }

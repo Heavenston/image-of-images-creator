@@ -161,4 +161,21 @@ impl ImageDictionary {
         })?;
         Ok(())
     }
+
+    pub fn get_closest(&self, t_color: &Srgb<ColorComponent>) -> &Srgb<ColorComponent> {
+        self.colors.iter()
+            .fold(
+                (10000., &self.colors[0]),
+                |(best_score, best_color), color| {
+                    let score = (t_color.red - color.red).powi(2) + (t_color.green - color.green).powi(2) + (t_color.red - color.red).powi(2);
+                    if score < best_score {
+                        (score, color)
+                    }
+                    else {
+                        (best_score, best_color)
+                    }
+                }
+            )
+            .1
+    }
 }
