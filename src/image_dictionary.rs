@@ -1,15 +1,16 @@
 use std::fs;
-use palette::{Srgb, LinSrgb,  Mix};
+use palette::{Srgb, LinSrgb, Mix, Lab};
 use std::path::PathBuf;
 use image::{GenericImageView,};
 use std::sync::Mutex;
 use std::ops::Deref;
 
 pub type ColorComponent = f32;
+pub type DictionaryColor = Lab<palette::white_point::D65, ColorComponent>;
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct ImageDictionaryCacheFile<A, B>
-where A: Deref<Target = [PathBuf]>, B: Deref<Target = [Srgb<ColorComponent>]> {
+where A: Deref<Target = [PathBuf]>, B: Deref<Target = [DictionaryColor]> {
     images: A,
     colors: B,
 }
@@ -19,7 +20,7 @@ pub struct ImageDictionaryReader {
     remaining_read_images: Vec<PathBuf>,
 
     images: Mutex<Vec<PathBuf>>,
-    colors: Mutex<Vec<Srgb<ColorComponent>>>,
+    colors: Mutex<Vec<DictionaryColor>>,
 }
 impl ImageDictionaryReader {
     pub fn open(folder: &str) -> Result<ImageDictionaryReader, String> {
@@ -109,7 +110,7 @@ pub struct ImageDictionaryReaderChunk<'a> {
     remaining_read_images: &'a [PathBuf],
 
     images: Vec<PathBuf>,
-    colors: Vec<Srgb<ColorComponent>>,
+    colors: Vec<DictionaryColor>,
 }
 
 impl<'a> ImageDictionaryReaderChunk<'a> {
@@ -139,7 +140,7 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
                 |a, b| a.mix(&b, 0.5)
             );
         self.images.push(path);
-        self.colors.push(Srgb::from_linear(color));
+        self.colors.push(DictionaryColor::from(Srgb::from_linear(color)));
         Ok(true)
     }
 }
@@ -148,7 +149,7 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
 pub struct ImageDictionary {
     dictionary_path: PathBuf,
     images: Vec<PathBuf>,
-    colors: Vec<Srgb<ColorComponent>>,
+    colors: Vec<DictionaryColor>,
 }
 impl ImageDictionary {
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -162,12 +163,12 @@ impl ImageDictionary {
         Ok(())
     }
 
-    pub fn get_closest(&self, t_color: &Srgb<ColorComponent>) -> &Srgb<ColorComponent> {
+    pub fn get_closest(&self, t_color: &DictionaryColor) -> &DictionaryColor {
         self.colors.iter()
             .fold(
                 (10000., &self.colors[0]),
                 |(best_score, best_color), color| {
-                    let score = (t_color.red - color.red).powi(2) + (t_color.green - color.green).powi(2) + (t_color.red - color.red).powi(2);
+                    let score = (t_color.l - color.l).powi(2) + (t_color.a - color.a).powi(2) + (t_color.b - color.b).powi(2);
                     if score < best_score {
                         (score, color)
                     }
