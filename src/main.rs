@@ -18,6 +18,10 @@ fn from_string_validator<T: FromStr>(error: String) -> impl Fn(String) -> Result
         Err(..) => Err(error.clone())
     }
 }
+fn try_parse<T: FromStr>(text: Option<&str>) -> Option<T> {
+    text.map(|a| a.parse().ok()).flatten()
+}
+
 fn main() {
     let matches = App::new("Image of image creator")
         .version(env!("CARGO_PKG_VERSION"))
@@ -42,6 +46,13 @@ fn main() {
             .long("width")
             .validator(from_string_validator::<u32>("Invalid path".into()))
         )
+        .arg(Arg::with_name("HEIGHT")
+            .help("Resize the target image to this height before processing")
+            .required(false)
+            .short("h")
+            .long("height")
+            .validator(from_string_validator::<u32>("Invalid path".into()))
+        )
         .get_matches();
 
     let target_image = match image::io::Reader::open(
@@ -58,7 +69,28 @@ fn main() {
             println!("{}", "Could not read target image".red());
             return
         }
-    }.to_rgba8();
+    };
+    let mut height = 0;
+    let mut width = 0;
+    match (try_parse::<u32>(matches.value_of("WIDTH")),
+           try_parse::<u32>(matches.value_of("HEIGHT"))) {
+        (Some(w), Some(h)) => {
+            height = h;
+            width = w;
+        }
+        (Some(w), None) => {
+            height = w * (height / width);
+            width = w;
+        }
+        (None, Some(h)) => {
+            width = h * (width / height);
+            height = h;
+        }
+        _ => (),
+    }
+    if height != 0 && width != 0 {
+        target_image.resize_exact(width, height, image::imageops::Nearest);
+    }
 
     let dict_reader = match image_dictionary::ImageDictionaryReader::open(
         matches.value_of("DICTIONARY").unwrap()
