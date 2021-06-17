@@ -99,7 +99,7 @@ fn main() {
 
     let dict_reader = match image_dictionary::ImageDictionaryReader::open(
         matches.value_of("DICTIONARY").unwrap(),
-        (12, 12)
+        (128, 128)
     ) {
         Ok(d) => d,
         Err(e) => { println!("{}", e.red()); return },
