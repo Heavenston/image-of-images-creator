@@ -1,29 +1,22 @@
 use std::fs;
 use palette::{Srgb, LinSrgb, Mix, Lab};
 use std::path::PathBuf;
-use image::{GenericImageView,};
+use image::{GenericImageView, RgbImage};
 use std::sync::Mutex;
-use std::ops::Deref;
 
 pub type ColorComponent = f32;
 pub type DictionaryColor = Lab<palette::white_point::D65, ColorComponent>;
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
-struct ImageDictionaryCacheFile<A, B>
-where A: Deref<Target = [PathBuf]>, B: Deref<Target = [DictionaryColor]> {
-    images: A,
-    colors: B,
-}
-
 pub struct ImageDictionaryReader {
     dictionary_path: PathBuf,
     remaining_read_images: Vec<PathBuf>,
+    images_size: (u32, u32),
 
-    images: Mutex<Vec<PathBuf>>,
+    images: Mutex<Vec<RgbImage>>,
     colors: Mutex<Vec<DictionaryColor>>,
 }
 impl ImageDictionaryReader {
-    pub fn open(folder: &str) -> Result<ImageDictionaryReader, String> {
+    pub fn open(folder: &str, images_size: (u32, u32)) -> Result<ImageDictionaryReader, String> {
         let dictionary_path = std::path::PathBuf::from(folder);
         match dictionary_path.metadata() {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -34,31 +27,17 @@ impl ImageDictionaryReader {
             Ok(d) if d.is_file() => return Err("Dictionary can't be a file".into()),
             _ => ()
         };
-        let save_path = dictionary_path.join("dictionary_cache.json");
-
-        let (images, colors) = if save_path.exists() {
-            let mut file = fs::File::open(&save_path).map_err(|_| "Could not read dictionary".to_string())?;
-            let ImageDictionaryCacheFile::<Vec<_>, Vec<_>> { images, colors } = serde_json::from_reader(&mut file).map_err(|_| "Invalid dictionary".to_string())?;
-            (images, colors)
-        }
-        else {
-            Default::default()
-        };
-
         let remaining_read_images = fs::read_dir(&dictionary_path)
             .map_err(|_| "Could not read directory".to_string())?
             .into_iter()
             .filter_map(|a| a.ok())
             .filter(|entry| entry.metadata().map(|m| m.is_file()).unwrap_or(false))
             .map(|entry| entry.path())
-            .filter(|path| path.file_name()
-                .map(|a| a.to_str()).flatten()
-                != Some("dictionary_cache.json"))
-            .filter(|p| !images.contains(&p.strip_prefix(&dictionary_path).unwrap().to_path_buf()))
             .collect::<Vec<_>>();
 
         Ok(ImageDictionaryReader {
-            images: Mutex::new(images.iter().map(|p| dictionary_path.join(p)).collect()), colors: Mutex::new(colors),
+            images: Mutex::new(Vec::default()), colors: Mutex::new(Vec::default()),
+            images_size,
             dictionary_path,
             remaining_read_images
         })
@@ -77,6 +56,7 @@ impl ImageDictionaryReader {
                     origin,
                     remaining_read_images: c,
 
+                    images_size: self.images_size,
                     images: Vec::new(),
                     colors: Vec::new(),
                 }
@@ -94,6 +74,7 @@ impl ImageDictionaryReader {
             dictionary_path: self.dictionary_path.clone(),
             colors,
             images,
+            images_size: self.images_size,
         };
         chunks.into_iter().for_each(|mut d| {
             assert_eq!(self as *const Self, d.origin as *const Self);
@@ -108,8 +89,9 @@ impl ImageDictionaryReader {
 pub struct ImageDictionaryReaderChunk<'a> {
     origin: &'a ImageDictionaryReader,
     remaining_read_images: &'a [PathBuf],
+    images_size: (u32, u32),
 
-    images: Vec<PathBuf>,
+    images: Vec<RgbImage>,
     colors: Vec<DictionaryColor>,
 }
 
@@ -139,7 +121,8 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
                 LinSrgb::default(),
                 |a, b| a.mix(&b, 0.5)
             );
-        self.images.push(path);
+        let image = image::io::Reader::open(path)?.decode()?.resize_exact(self.images_size.0,self.images_size.1, image::imageops::Nearest).to_rgb8();
+        self.images.push(image);
         self.colors.push(DictionaryColor::from(Srgb::from_linear(color)));
         Ok(true)
     }
@@ -148,35 +131,28 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
 #[derive(Default)]
 pub struct ImageDictionary {
     dictionary_path: PathBuf,
-    images: Vec<PathBuf>,
+    images: Vec<RgbImage>,
     colors: Vec<DictionaryColor>,
+    pub images_size: (u32, u32),
 }
 impl ImageDictionary {
-    pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut file = std::fs::File::create(self.dictionary_path.join("dictionary_cache.json"))?;
-        serde_json::to_writer_pretty(&mut file, &ImageDictionaryCacheFile {
-            images: self.images.iter().map(|a| {
-                a.strip_prefix(&self.dictionary_path).unwrap().to_path_buf()
-            }).collect::<Vec<_>>(),
-            colors: self.colors.as_slice(),
-        })?;
-        Ok(())
-    }
-
-    pub fn get_closest(&self, t_color: &DictionaryColor) -> &DictionaryColor {
-        self.colors.iter()
+    pub fn get_closest(&self, t_color: &DictionaryColor) -> (&DictionaryColor, &RgbImage) {
+        let best_index = self.colors
+            .iter()
+            .enumerate()
             .fold(
-                (10000., &self.colors[0]),
-                |(best_score, best_color), color| {
+                (10000., 0usize),
+                |(best_score, best_color), (i, color)| {
                     let score = (t_color.l - color.l).powi(2) + (t_color.a - color.a).powi(2) + (t_color.b - color.b).powi(2);
                     if score < best_score {
-                        (score, color)
+                        (score, i)
                     }
                     else {
                         (best_score, best_color)
                     }
                 }
-            )
-            .1
+            ).1;
+
+        (&self.colors[best_index], &self.images[best_index])
     }
 }
