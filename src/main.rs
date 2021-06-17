@@ -99,7 +99,7 @@ fn main() {
 
     let dict_reader = match image_dictionary::ImageDictionaryReader::open(
         matches.value_of("DICTIONARY").unwrap(),
-        (128, 128)
+        (16, 16)
     ) {
         Ok(d) => d,
         Err(e) => { println!("{}", e.red()); return },
@@ -109,7 +109,6 @@ fn main() {
     splits.par_iter_mut()
         .for_each(|split| {
             while split.process_image().unwrap_or(true) {}
-            println!("Done one")
         });
     let image_dictionary = dict_reader.build_split(splits);
     println!("Processing...");
