@@ -83,11 +83,11 @@ fn main() {
             width = w;
         }
         (Some(w), None) => {
-            height = w * (target_image.height() / target_image.width());
+            height = (w as f32 * (target_image.height() as f32 / target_image.width() as f32)) as u32;
             width = w;
         }
         (None, Some(h)) => {
-            width = h * (target_image.width() / target_image.height());
+            width = (h as f32 * (target_image.width() as f32 / target_image.height() as f32)) as u32;
             height = h;
         }
         _ => (),
