@@ -105,25 +105,16 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
         if self.remaining_read_images.len() == 0 { return Ok(false) }
         let path = self.remaining_read_images[0].clone();
         self.remaining_read_images = &self.remaining_read_images[1..];
-        let image = image::io::Reader::open(&path)?.decode()?;
-        let color = image
-            .pixels()
-            .map(|(.., color)| color)
-            .map(|color| (
-                color.0[0] as f32 / 255.,
-                color.0[1] as f32 / 255.,
-                color.0[2] as f32 / 255.,
-            ))
-            .map(
-                |color| Srgb::from_components(color).into_linear()
-            )
-            .fold(
-                LinSrgb::default(),
-                |a, b| a.mix(&b, 1. / (image.height() as f32 * image.width() as f32))
-            );
-        let image = image::io::Reader::open(path)?.decode()?.resize_exact(self.images_size.0,self.images_size.1, image::imageops::Nearest).to_rgb8();
+        let normal_image = image::io::Reader::open(path)?.decode()?;
+        let color = normal_image.resize_exact(1, 1, image::imageops::Gaussian).get_pixel(0, 0);
+        let color = Srgb::new(
+            color.0[0] as f32 / 255.,
+            color.0[1] as f32 / 255.,
+            color.0[2] as f32 / 255.
+        );
+        let image = normal_image.resize_exact(self.images_size.0,self.images_size.1, image::imageops::Gaussian).to_rgb8();
         self.images.push(image);
-        self.colors.push(DictionaryColor::from(Srgb::from_linear(color)));
+        self.colors.push(DictionaryColor::from(color));
         Ok(true)
     }
 }
