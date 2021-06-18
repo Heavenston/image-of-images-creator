@@ -103,12 +103,16 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
         let path = self.remaining_read_images[0].clone();
         self.remaining_read_images = &self.remaining_read_images[1..];
         let normal_image = image::io::Reader::open(path)?.decode()?;
-        let color = normal_image.resize_exact(1, 1, image::imageops::Gaussian).get_pixel(0, 0);
-        let color = Srgb::new(
-            color.0[0] as f32 / 255.,
-            color.0[1] as f32 / 255.,
-            color.0[2] as f32 / 255.
-        );
+        let amount_of_pixels = (normal_image.height() * normal_image.width()) as f32;
+        let color = normal_image.pixels()
+            .map(|(.., pixel)| [pixel.0[0] as f32 / 255., pixel.0[1] as f32 / 255., pixel.0[2] as f32 / 255.])
+            .map(|c| Srgb::new(c[0], c[1], c[2]))
+            .fold(Srgb::new(0., 0., 0.), |mut mean, color| {
+                mean.red += color.red / amount_of_pixels;
+                mean.green += color.green / amount_of_pixels;
+                mean.blue += color.blue / amount_of_pixels;
+                mean
+            });
         let image = normal_image.resize_exact(self.images_size.0,self.images_size.1, image::imageops::Gaussian).to_rgb8();
         self.images.push(image);
         self.colors.push(DictionaryColor::from(color));
