@@ -1,5 +1,5 @@
 use std::fs;
-use palette::{Srgb, LinSrgb, Mix, Lab};
+use palette::{Srgb, Lab};
 use std::path::PathBuf;
 use image::{GenericImageView, RgbImage};
 use std::sync::Mutex;
@@ -8,7 +8,6 @@ pub type ColorComponent = f32;
 pub type DictionaryColor = Lab<palette::white_point::D65, ColorComponent>;
 
 pub struct ImageDictionaryReader {
-    dictionary_path: PathBuf,
     remaining_read_images: Vec<PathBuf>,
     images_size: (u32, u32),
 
@@ -38,7 +37,6 @@ impl ImageDictionaryReader {
         Ok(ImageDictionaryReader {
             images: Mutex::new(Vec::default()), colors: Mutex::new(Vec::default()),
             images_size,
-            dictionary_path,
             remaining_read_images
         })
     }
@@ -71,7 +69,6 @@ impl ImageDictionaryReader {
         std::mem::swap(&mut *self.images.lock().unwrap(), &mut images);
 
         let mut dict = ImageDictionary {
-            dictionary_path: self.dictionary_path.clone(),
             colors,
             images,
             images_size: self.images_size,
@@ -121,7 +118,6 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
 
 #[derive(Default)]
 pub struct ImageDictionary {
-    dictionary_path: PathBuf,
     images: Vec<RgbImage>,
     colors: Vec<DictionaryColor>,
     pub images_size: (u32, u32),

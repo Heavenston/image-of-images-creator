@@ -1,0 +1,11 @@
+[package]
+name = "image-of-images-creator"
+version = "0.1.0"
+author = "Heavenstone"
+description = "Combine images to make a big one"
+edition = "2018"
+
+[dependencies]
+image = "0.23"
+palette = { version = "0.5", features = ["serializing"] }
+rayon = "1.5"

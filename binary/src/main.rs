@@ -1,12 +1,10 @@
-mod image_dictionary;
-mod image_of_image_er;
-
 use clap::{Arg, App};
 use std::convert::{TryFrom};
 use std::str::FromStr;
 use colored::*;
 use rayon::prelude::*;
 use image::GenericImageView;
+use image_of_images_creator::*;
 
 fn try_from_validator<T: TryFrom<String>>(error: String) -> impl Fn(String) -> Result<(), String> {
     move |path| match T::try_from(path) {
@@ -97,7 +95,7 @@ fn main() {
     }
     println!("Loaded image is {}x{}", target_image.width(), target_image.height());
 
-    let dict_reader = match image_dictionary::ImageDictionaryReader::open(
+    let dict_reader = match ImageDictionaryReader::open(
         matches.value_of("DICTIONARY").unwrap(),
         (64, 64)
     ) {
@@ -113,7 +111,7 @@ fn main() {
     let image_dictionary = dict_reader.build_split(splits);
     println!("Processing...");
 
-    let new_image = image_of_image_er::image_of_image(&image_dictionary, &target_image.to_rgb8());
+    let new_image = image_of_image(&image_dictionary, &target_image.to_rgb8());
     println!("Final image size: {}x{}", new_image.width(), new_image.height());
     println!("Saving...");
     new_image.save("hello.png").unwrap();

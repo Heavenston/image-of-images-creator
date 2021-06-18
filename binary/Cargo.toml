@@ -1,0 +1,13 @@
+[package]
+name = "image-of-images-creator-bin"
+version = "0.1.0"
+author = "Heavenstone"
+description = "Combine images to make a big one"
+edition = "2018"
+
+[dependencies]
+clap = "2.33"
+image = "0.23"
+colored = "2"
+rayon = "1.5"
+image-of-images-creator = { path = "../library" }
