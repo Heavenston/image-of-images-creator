@@ -39,6 +39,13 @@ fn main() {
             .required(true)
             .index(2)
         )
+        .arg(Arg::with_name("OUTPUT")
+            .help("Path to the output file")
+            .validator(try_from_validator::<std::path::PathBuf>("Invalid path".into()))
+            .required(false)
+            .default_value("output.png")
+            .index(3)
+        )
         .arg(Arg::with_name("WIDTH")
             .help("Resize the target image to this width before processing")
             .required(false)
@@ -126,5 +133,5 @@ fn main() {
     let new_image = image_of_image(&image_dictionary, &target_image.to_rgb8());
     println!("Final image size: {}x{}", new_image.width(), new_image.height());
     println!("Saving...");
-    new_image.save("hello.png").unwrap();
+    new_image.save(matches.value_of("OUTPUT").unwrap()).unwrap();
 }
