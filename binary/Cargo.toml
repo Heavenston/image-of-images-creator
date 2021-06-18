@@ -1,7 +1,7 @@
 [package]
 name = "image-of-images-creator-bin"
 version = "0.1.0"
-author = "Heavenstone"
+authors = ["Heavenstone"]
 description = "Combine images to make a big one"
 edition = "2018"
 
