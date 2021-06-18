@@ -96,8 +96,8 @@ fn main() {
     ) {
         Ok(i) => match i.decode() {
             Ok(i) => i,
-            Err(..) => {
-                println!("{}", "Invalid image".red());
+            Err(e) => {
+                println!("{}{}", "Invalid target image: ".red(), e);
                 return
             }
         },
