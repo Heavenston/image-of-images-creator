@@ -35,7 +35,7 @@ impl ImageDictionaryReader {
             .collect::<Vec<_>>();
 
         Ok(ImageDictionaryReader {
-            images: Mutex::new(Vec::default()), colors: Mutex::new(Vec::default()),
+            images: Mutex::new(Vec::with_capacity(remaining_read_images.len())), colors: Mutex::new(Vec::with_capacity(remaining_read_images.len())),
             images_size,
             remaining_read_images
         })
