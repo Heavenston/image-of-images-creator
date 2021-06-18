@@ -45,7 +45,7 @@ fn main() {
             .short("w")
             .long("width")
             .takes_value(true)
-            .validator(from_string_validator::<u32>("Invalid path".into()))
+            .validator(from_string_validator::<u32>("Invalid number".into()))
         )
         .arg(Arg::with_name("HEIGHT")
             .help("Resize the target image to this height before processing")
@@ -53,9 +53,36 @@ fn main() {
             .takes_value(true)
             .short("h")
             .long("height")
-            .validator(from_string_validator::<u32>("Invalid path".into()))
+            .validator(from_string_validator::<u32>("Invalid number".into()))
+        )
+        .arg(Arg::with_name("PIX_WIDTH")
+            .help("Resize dictionary images before processing")
+            .required(false)
+            .takes_value(true)
+            .short("pw")
+            .long("pixel_width")
+            .default_value("32")
+            .validator(from_string_validator::<u32>("Invalid number".into()))
         )
         .get_matches();
+
+    let pixel_width = matches.value_of("PIX_WIDTH").unwrap().parse::<u32>().unwrap();
+
+    println!("Loading dictionary...");
+    let dict_reader = match ImageDictionaryReader::open(
+        matches.value_of("DICTIONARY").unwrap(),
+        (pixel_width, pixel_width)
+    ) {
+        Ok(d) => d,
+        Err(e) => { println!("{}", e.red()); return },
+    };
+    println!("Loading {} images", dict_reader.len());
+    let mut splits = dict_reader.split(10);
+    splits.par_iter_mut()
+        .for_each(|split| {
+            while split.process_image().unwrap_or(true) {}
+        });
+    let image_dictionary = dict_reader.build_split(splits);
 
     let mut target_image = match image::io::Reader::open(
         matches.value_of("TARGET_IMAGE").unwrap()
@@ -95,22 +122,7 @@ fn main() {
     }
     println!("Loaded image is {}x{}", target_image.width(), target_image.height());
 
-    let dict_reader = match ImageDictionaryReader::open(
-        matches.value_of("DICTIONARY").unwrap(),
-        (64, 64)
-    ) {
-        Ok(d) => d,
-        Err(e) => { println!("{}", e.red()); return },
-    };
-    println!("Loading {} images", dict_reader.len());
-    let mut splits = dict_reader.split(10);
-    splits.par_iter_mut()
-        .for_each(|split| {
-            while split.process_image().unwrap_or(true) {}
-        });
-    let image_dictionary = dict_reader.build_split(splits);
     println!("Processing...");
-
     let new_image = image_of_image(&image_dictionary, &target_image.to_rgb8());
     println!("Final image size: {}x{}", new_image.width(), new_image.height());
     println!("Saving...");
