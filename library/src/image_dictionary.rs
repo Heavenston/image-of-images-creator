@@ -44,6 +44,9 @@ impl ImageDictionaryReader {
     pub fn len(&self) -> usize {
         self.remaining_read_images.len() + self.images.lock().unwrap().len()
     }
+    pub fn unprocessed_len(&self) -> usize {
+        self.remaining_read_images.len()
+    }
 
     pub fn split(&self, chunk_size: usize) -> Vec<ImageDictionaryReaderChunk> {
         let origin = &*self;

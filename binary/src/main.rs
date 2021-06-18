@@ -84,7 +84,9 @@ fn main() {
         Err(e) => { println!("{}", e.red()); return },
     };
     println!("Loading {} images", dict_reader.len());
-    let mut splits = dict_reader.split(10);
+    let mut splits = dict_reader.split(
+        dict_reader.unprocessed_len() / rayon::current_num_threads()
+    );
     splits.par_iter_mut()
         .for_each(|split| {
             while split.process_image().unwrap_or(true) {}
