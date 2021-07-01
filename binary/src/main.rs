@@ -72,6 +72,13 @@ fn main() {
             .default_value("32")
             .validator(from_string_validator::<u32>("Invalid number".into()))
         )
+        .arg(Arg::with_name("IS_VIDEO")
+            .help("Flag to treat the input as a video")
+            .required(false)
+            .takes_value(false)
+            .short("v")
+            .long("is_video")
+        )
         .get_matches();
 
     let pixel_width = matches.value_of("PIX_WIDTH").unwrap().parse::<u32>().unwrap();
@@ -94,40 +101,105 @@ fn main() {
         });
     let image_dictionary = dict_reader.build_split(splits);
 
-    let mut target_image = match opencv::imgcodecs::imread(matches.value_of("TARGET_IMAGE").unwrap(), opencv::imgcodecs::IMREAD_COLOR) {
-        Ok(i) => i,
-        Err(..) => {
-            println!("{}", "Could not read target image".red()); return }
-    };
-    let mut height = 0;
-    let mut width = 0;
-    match (try_parse::<u32>(matches.value_of("WIDTH")),
-           try_parse::<u32>(matches.value_of("HEIGHT"))) {
-        (Some(w), Some(h)) => {
-            height = h;
-            width = w;
-        }
-        (Some(w), None) => {
-            height = (w as f32 * (target_image.cols() as f32 / target_image.rows() as f32)) as u32;
-            width = w;
-        }
-        (None, Some(h)) => {
-            width = (h as f32 * (target_image.rows() as f32 / target_image.cols() as f32)) as u32;
-            height = h;
-        }
-        _ => (),
-    }
-    if height != 0 && width != 0 {
-        let mut new_image = unsafe { Mat::new_rows_cols(height as i32, width as i32, target_image.typ().unwrap()) } .unwrap();
-        let size = new_image.size().unwrap();
-        opencv::imgproc::resize(&target_image, &mut new_image, size, 0., 0., opencv::imgproc::InterpolationFlags::INTER_LINEAR as i32).unwrap();
-        target_image = new_image;
-    }
-    println!("Loaded image is {}x{}", target_image.rows(), target_image.cols());
+    if matches.is_present("IS_VIDEO") {
+        let mut target_video = opencv::videoio::VideoCapture::from_file(matches.value_of("TARGET_IMAGE").unwrap(), 0).expect("Could not read image");
+        let fps = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FPS as i32).unwrap() as f64;
+        let frame_width = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FRAME_WIDTH as i32).unwrap() as i32;
+        let frame_height = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FRAME_HEIGHT as i32).unwrap() as i32;
+        println!("Reading video of {}fps and of size {}x{}", fps, frame_width, frame_height);
 
-    println!("Processing...");
-    let new_image = image_of_image(&image_dictionary, &target_image);
-    println!("Final image size: {}x{}", new_image.rows(), new_image.cols());
-    println!("Saving...");
-    opencv::imgcodecs::imwrite(matches.value_of("OUTPUT").unwrap(), &new_image, &opencv::core::Vector::new()).expect("Could not save image");
+        let mut height = 0;
+        let mut width = 0;
+        match (try_parse::<u32>(matches.value_of("WIDTH")),
+               try_parse::<u32>(matches.value_of("HEIGHT"))) {
+            (Some(w), Some(h)) => {
+                height = h;
+                width = w;
+            }
+            (Some(w), None) => {
+                height = (w as f32 * (frame_height as f32 / frame_width as f32)) as u32;
+                width = w;
+            }
+            (None, Some(h)) => {
+                width = (h as f32 * (frame_width as f32 / frame_height as f32)) as u32;
+                height = h;
+            }
+            _ => (),
+        }
+
+        let mut output_video = opencv::videoio::VideoWriter::new(
+            matches.value_of("OUTPUT").unwrap(),
+            opencv::videoio::VideoWriter::fourcc('m' as i8, 'p' as i8, '4' as i8, 's' as i8).unwrap(),
+            fps,
+            opencv::core::Size2i::new(width as i32, height as i32),
+            true
+        ).expect("Could not create video writer");
+
+        let mut current_frame = Mat::default();
+        let mut i = 0;
+        while target_video.read(&mut current_frame).expect("Could not read frame") {
+            i += 1;
+            println!("Processing frame #{}", i);
+
+            if height != 0 && width != 0 {
+                let mut new_image = unsafe { Mat::new_rows_cols(height as i32, width as i32, current_frame.typ().unwrap()) } .unwrap();
+                let size = new_image.size().unwrap();
+                opencv::imgproc::resize(
+                    &current_frame, 
+                    &mut new_image,
+                    size,
+                    0.,
+                    0.,
+                    opencv::imgproc::InterpolationFlags::INTER_LINEAR as i32
+                ).unwrap();
+                current_frame = new_image;
+            }
+            println!("Loaded image is {}x{}", current_frame.rows(), current_frame.cols());
+
+            println!("Processing...");
+            let new_image = image_of_image(&image_dictionary, &current_frame);
+            output_video.write(&new_image).unwrap();
+        }
+        println!("Finished ! Encoded {} frames", i);
+
+        output_video.release().unwrap();
+        target_video.release().unwrap();
+    } else {
+        let mut target_image = match opencv::imgcodecs::imread(matches.value_of("TARGET_IMAGE").unwrap(), opencv::imgcodecs::IMREAD_COLOR) {
+            Ok(i) => i,
+            Err(..) => {
+                println!("{}", "Could not read target image".red()); return }
+        };
+        let mut height = 0;
+        let mut width = 0;
+        match (try_parse::<u32>(matches.value_of("WIDTH")),
+               try_parse::<u32>(matches.value_of("HEIGHT"))) {
+            (Some(w), Some(h)) => {
+                height = h;
+                width = w;
+            }
+            (Some(w), None) => {
+                height = (w as f32 * (target_image.cols() as f32 / target_image.rows() as f32)) as u32;
+                width = w;
+            }
+            (None, Some(h)) => {
+                width = (h as f32 * (target_image.rows() as f32 / target_image.cols() as f32)) as u32;
+                height = h;
+            }
+            _ => (),
+        }
+        if height != 0 && width != 0 {
+            let mut new_image = unsafe { Mat::new_rows_cols(height as i32, width as i32, target_image.typ().unwrap()) } .unwrap();
+            let size = new_image.size().unwrap();
+            opencv::imgproc::resize(&target_image, &mut new_image, size, 0., 0., opencv::imgproc::InterpolationFlags::INTER_LINEAR as i32).unwrap();
+            target_image = new_image;
+        }
+        println!("Loaded image is {}x{}", target_image.rows(), target_image.cols());
+
+        println!("Processing...");
+        let new_image = image_of_image(&image_dictionary, &target_image);
+        println!("Final image size: {}x{}", new_image.rows(), new_image.cols());
+        println!("Saving...");
+        opencv::imgcodecs::imwrite(matches.value_of("OUTPUT").unwrap(), &new_image, &opencv::core::Vector::new()).expect("Could not save image");
+    }
 }

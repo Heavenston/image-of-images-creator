@@ -68,7 +68,11 @@ mod open_impl {
             Ok(unsafe { Mat::new_rows_cols(height as i32, width as i32, CV_8UC3)? })
         }
         fn read(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
-            Ok(opencv::imgcodecs::imread(&path.as_ref().to_string_lossy(), opencv::imgcodecs::ImreadModes::IMREAD_COLOR as i32)?)
+            let img = opencv::imgcodecs::imread(&path.as_ref().to_string_lossy(), opencv::imgcodecs::ImreadModes::IMREAD_COLOR as i32)?;
+            if img.empty().unwrap_or(true) {
+                return Err("".into());
+            }
+            Ok(img)
         }
 
         fn img_size(&self) -> [u32; 2] {
@@ -86,18 +90,18 @@ mod open_impl {
         }
 
         fn absorbe(&mut self, other: &Self, x: u32, y: u32) {
-            other.copy_to(&mut Mat::roi(self, Rect::new(y as i32, x as i32, other.cols(), other.rows())).unwrap()).unwrap();
+            other.copy_to(&mut Mat::roi(self, Rect::new(x as i32, y as i32, other.cols(), other.rows())).unwrap()).unwrap();
         }
         fn resize(&self, width: u32, height: u32) -> Self {
-            let mut dst = Self::new(height, width).unwrap();
-            let size = self.size().unwrap();
+            let mut dst = Self::new(width, height).unwrap();
+            let size = dst.size().unwrap();
             opencv::imgproc::resize(self, &mut dst, size, 0., 0., opencv::imgproc::InterpolationFlags::INTER_LINEAR as i32).unwrap();
             dst
         }
         fn for_each_pixels(&self, mut callback: impl FnMut(u32, u32, Self::Pixel) -> ()) {
             for x in 0..self.cols() as u32 {
                 for y in 0..self.rows() as u32 {
-                    (callback)(x, y, self.get_pixel(y, x));
+                    (callback)(x, y, self.get_pixel(x, y));
                 }
             }
         }
