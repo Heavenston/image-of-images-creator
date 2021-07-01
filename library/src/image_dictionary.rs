@@ -3,19 +3,20 @@ use palette::{Srgb, Lab};
 use std::path::PathBuf;
 use image::{GenericImageView, RgbImage};
 use std::sync::Mutex;
+use crate::Img;
 
 pub type ColorComponent = f32;
 pub type DictionaryColor = Lab<palette::white_point::D65, ColorComponent>;
 
-pub struct ImageDictionaryReader {
+pub struct ImageDictionaryReader<I: Img> {
     remaining_read_images: Vec<PathBuf>,
     images_size: (u32, u32),
 
-    images: Mutex<Vec<RgbImage>>,
+    images: Mutex<Vec<I>>,
     colors: Mutex<Vec<DictionaryColor>>,
 }
-impl ImageDictionaryReader {
-    pub fn open(folder: &str, images_size: (u32, u32)) -> Result<ImageDictionaryReader, String> {
+impl<I: Img> ImageDictionaryReader<I> {
+    pub fn open(folder: &str, images_size: (u32, u32)) -> Result<Self, String> {
         let dictionary_path = std::path::PathBuf::from(folder);
         match dictionary_path.metadata() {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -48,7 +49,7 @@ impl ImageDictionaryReader {
         self.remaining_read_images.len()
     }
 
-    pub fn split(&self, chunk_size: usize) -> Vec<ImageDictionaryReaderChunk> {
+    pub fn split(&self, chunk_size: usize) -> Vec<ImageDictionaryReaderChunk<I>> {
         let origin = &*self;
         self.remaining_read_images
             .chunks(chunk_size)
@@ -65,8 +66,8 @@ impl ImageDictionaryReader {
             .collect()
     }
 
-    pub fn build_split<'a>(&'a self, chunks: Vec<ImageDictionaryReaderChunk<'a>>) -> ImageDictionary {
-        let mut colors = Vec::new();
+    pub fn build_split<'a>(&'a self, chunks: Vec<ImageDictionaryReaderChunk<'a, I>>) -> ImageDictionary<I> {
+            let mut colors = Vec::new();
         std::mem::swap(&mut *self.colors.lock().unwrap(), &mut colors);
         let mut images = Vec::new();
         std::mem::swap(&mut *self.images.lock().unwrap(), &mut images);
@@ -86,16 +87,16 @@ impl ImageDictionaryReader {
     }
 }
 
-pub struct ImageDictionaryReaderChunk<'a> {
-    origin: &'a ImageDictionaryReader,
+pub struct ImageDictionaryReaderChunk<'a, I: Img> {
+    origin: &'a ImageDictionaryReader<I>,
     remaining_read_images: &'a [PathBuf],
     images_size: (u32, u32),
 
-    images: Vec<RgbImage>,
+    images: Vec<I>,
     colors: Vec<DictionaryColor>,
 }
 
-impl<'a> ImageDictionaryReaderChunk<'a> {
+impl<'a, I: Img> ImageDictionaryReaderChunk<'a, I> {
     /// Return the amount of images remaining to be processed
     pub fn len(&self) -> usize {
         self.remaining_read_images.len()
@@ -105,32 +106,31 @@ impl<'a> ImageDictionaryReaderChunk<'a> {
         if self.remaining_read_images.len() == 0 { return Ok(false) }
         let path = self.remaining_read_images[0].clone();
         self.remaining_read_images = &self.remaining_read_images[1..];
-        let normal_image = image::io::Reader::open(path)?.decode()?;
-        let amount_of_pixels = (normal_image.height() * normal_image.width()) as f32;
-        let color = normal_image.pixels()
-            .map(|(.., pixel)| [pixel.0[0] as f32 / 255., pixel.0[1] as f32 / 255., pixel.0[2] as f32 / 255.])
-            .map(|c| Srgb::new(c[0], c[1], c[2]))
-            .fold(Srgb::new(0., 0., 0.), |mut mean, color| {
-                mean.red += color.red / amount_of_pixels;
-                mean.green += color.green / amount_of_pixels;
-                mean.blue += color.blue / amount_of_pixels;
-                mean
-            });
-        let image = normal_image.resize_exact(self.images_size.0,self.images_size.1, image::imageops::Gaussian).to_rgb8();
+        let normal_image = I::read(&path)?;
+        let [height, width] = normal_image.img_size();
+        let amount_of_pixels = (height * width) as f32;
+        let mut mean = Srgb::new(0., 0., 0.);
+        normal_image.for_each_pixels(|_, _, c| {
+            let c = c.into().into_format::<f32>();
+            mean.red += c.red / amount_of_pixels;
+            mean.green += c.green / amount_of_pixels;
+            mean.blue += c.blue / amount_of_pixels;
+        });
+        let image = normal_image.resize(self.images_size.0, self.images_size.1);
         self.images.push(image);
-        self.colors.push(DictionaryColor::from(color));
+        self.colors.push(DictionaryColor::from(mean));
         Ok(true)
     }
 }
 
 #[derive(Default)]
-pub struct ImageDictionary {
-    images: Vec<RgbImage>,
+pub struct ImageDictionary<I: Img> {
+    images: Vec<I>,
     colors: Vec<DictionaryColor>,
     pub images_size: (u32, u32),
 }
-impl ImageDictionary {
-    pub fn get_closest(&self, t_color: &DictionaryColor) -> (&DictionaryColor, &RgbImage) {
+impl<I: Img> ImageDictionary<I> {
+    pub fn get_closest(&self, t_color: &DictionaryColor) -> (&DictionaryColor, &I) {
         let best_index = self.colors
             .iter()
             .enumerate()

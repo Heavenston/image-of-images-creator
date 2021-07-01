@@ -5,7 +5,11 @@ authors = ["Heavenstone"]
 description = "Combine images to make a big one"
 edition = "2018"
 
+[features]
+ocv = ["opencv"]
+
 [dependencies]
 image = "0.23"
+opencv = { version = "0.53", optional = true }
 palette = { version = "0.5", features = ["serializing"] }
 rayon = "1.5"
