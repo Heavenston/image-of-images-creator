@@ -55,7 +55,7 @@ impl Img for RgbImage {
     }
 }
 
-#[cfg(ocv)]
+#[cfg(feature = "ocv")]
 mod open_impl {
     use super::*;
     use opencv::prelude::*;
@@ -65,7 +65,7 @@ mod open_impl {
         type Pixel = Srgb<u8>;
 
         fn new(width: u32, height: u32) -> Result<Self, Box<dyn std::error::Error>> {
-            Ok(unsafe { Mat::new_rows_cols(width as i32, height as i32, CV_8UC3)? })
+            Ok(unsafe { Mat::new_rows_cols(height as i32, width as i32, CV_8UC3)? })
         }
         fn read(path: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
             Ok(opencv::imgcodecs::imread(&path.as_ref().to_string_lossy(), opencv::imgcodecs::ImreadModes::IMREAD_COLOR as i32)?)
@@ -75,29 +75,29 @@ mod open_impl {
             [self.cols() as u32, self.rows() as u32]
         }
         fn get_pixel(&self, x: u32, y: u32) -> Self::Pixel {
-            let p = self.at_2d::<Vec3<u8>>(x as i32, y as i32).unwrap();
+            let p = self.at_2d::<Vec3<u8>>(y as i32, x as i32).unwrap();
             Self::Pixel::new(p[2], p[1], p[0])
         }
         fn set_pixel(&mut self, x: u32, y: u32, pixel: Self::Pixel) {
-            let p = self.at_2d_mut::<Vec3<u8>>(x as i32, y as i32).unwrap();
+            let p = self.at_2d_mut::<Vec3<u8>>(y as i32, x as i32).unwrap();
             p[0] = pixel.blue;
             p[1] = pixel.green;
             p[2] = pixel.red;
         }
 
         fn absorbe(&mut self, other: &Self, x: u32, y: u32) {
-            other.copy_to(&mut Mat::roi(self, Rect::new(x as i32, y as i32, other.cols(), other.rows())).unwrap()).unwrap();
+            other.copy_to(&mut Mat::roi(self, Rect::new(y as i32, x as i32, other.cols(), other.rows())).unwrap()).unwrap();
         }
         fn resize(&self, width: u32, height: u32) -> Self {
-            let mut dst = Self::new(width, height).unwrap();
+            let mut dst = Self::new(height, width).unwrap();
             let size = self.size().unwrap();
-            opencv::imgproc::resize(self, &mut dst, size, 0., 0., 0).unwrap();
+            opencv::imgproc::resize(self, &mut dst, size, 0., 0., opencv::imgproc::InterpolationFlags::INTER_LINEAR as i32).unwrap();
             dst
         }
         fn for_each_pixels(&self, mut callback: impl FnMut(u32, u32, Self::Pixel) -> ()) {
             for x in 0..self.cols() as u32 {
                 for y in 0..self.rows() as u32 {
-                    (callback)(x, y, self.get_pixel(x, y));
+                    (callback)(x, y, self.get_pixel(y, x));
                 }
             }
         }

@@ -291,6 +291,7 @@ dependencies = [
  "colored",
  "image",
  "image-of-images-creator",
+ "opencv",
  "rayon",
 ]
 

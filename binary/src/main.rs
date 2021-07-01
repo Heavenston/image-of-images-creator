@@ -4,6 +4,7 @@ use std::str::FromStr;
 use colored::*;
 use rayon::prelude::*;
 use image::GenericImageView;
+use opencv::prelude::*;
 use image_of_images_creator::*;
 
 fn try_from_validator<T: TryFrom<String>>(error: String) -> impl Fn(String) -> Result<(), String> {
@@ -93,20 +94,10 @@ fn main() {
         });
     let image_dictionary = dict_reader.build_split(splits);
 
-    let mut target_image = match image::io::Reader::open(
-        matches.value_of("TARGET_IMAGE").unwrap()
-    ) {
-        Ok(i) => match i.decode() {
-            Ok(i) => i,
-            Err(e) => {
-                println!("{}{}", "Invalid target image: ".red(), e);
-                return
-            }
-        },
+    let mut target_image = match opencv::imgcodecs::imread(matches.value_of("TARGET_IMAGE").unwrap(), opencv::imgcodecs::IMREAD_COLOR) {
+        Ok(i) => i,
         Err(..) => {
-            println!("{}", "Could not read target image".red());
-            return
-        }
+            println!("{}", "Could not read target image".red()); return }
     };
     let mut height = 0;
     let mut width = 0;
@@ -117,23 +108,26 @@ fn main() {
             width = w;
         }
         (Some(w), None) => {
-            height = (w as f32 * (target_image.height() as f32 / target_image.width() as f32)) as u32;
+            height = (w as f32 * (target_image.cols() as f32 / target_image.rows() as f32)) as u32;
             width = w;
         }
         (None, Some(h)) => {
-            width = (h as f32 * (target_image.width() as f32 / target_image.height() as f32)) as u32;
+            width = (h as f32 * (target_image.rows() as f32 / target_image.cols() as f32)) as u32;
             height = h;
         }
         _ => (),
     }
     if height != 0 && width != 0 {
-        target_image = target_image.resize_exact(width, height, image::imageops::Gaussian);
+        let mut new_image = unsafe { Mat::new_rows_cols(height as i32, width as i32, target_image.typ().unwrap()) } .unwrap();
+        let size = new_image.size().unwrap();
+        opencv::imgproc::resize(&target_image, &mut new_image, size, 0., 0., opencv::imgproc::InterpolationFlags::INTER_LINEAR as i32).unwrap();
+        target_image = new_image;
     }
-    println!("Loaded image is {}x{}", target_image.width(), target_image.height());
+    println!("Loaded image is {}x{}", target_image.rows(), target_image.cols());
 
     println!("Processing...");
-    let new_image = image_of_image(&image_dictionary, &target_image.to_rgb8());
-    println!("Final image size: {}x{}", new_image.width(), new_image.height());
+    let new_image = image_of_image(&image_dictionary, &target_image);
+    println!("Final image size: {}x{}", new_image.rows(), new_image.cols());
     println!("Saving...");
-    new_image.save(matches.value_of("OUTPUT").unwrap()).unwrap();
+    opencv::imgcodecs::imwrite(matches.value_of("OUTPUT").unwrap(), &new_image, &opencv::core::Vector::new()).expect("Could not save image");
 }
