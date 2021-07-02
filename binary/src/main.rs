@@ -107,6 +107,7 @@ fn main() {
         let fps = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FPS as i32).unwrap() as f64;
         let frame_width = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FRAME_WIDTH as i32).unwrap() as i32;
         let frame_height = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FRAME_HEIGHT as i32).unwrap() as i32;
+        let frame_amount = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FRAME_COUNT as i32).unwrap() as i32;
         let fourcc = target_video.get(opencv::videoio::VideoCaptureProperties::CAP_PROP_FOURCC as i32).unwrap() as i32;
         println!("Reading video of {}fps and of size {}x{}", fps, frame_width, frame_height);
 
@@ -129,29 +130,28 @@ fn main() {
             _ => (),
         }
 
-        let output_video = opencv::videoio::VideoWriter::new(
+        let mut output_video = opencv::videoio::VideoWriter::new(
             matches.value_of("OUTPUT").unwrap(),
             fourcc,
             fps,
-            opencv::core::Size2i::new(width as i32, height as i32),
+            opencv::core::Size2i::new((width * image_dictionary.images_size.0) as i32, (height * image_dictionary.images_size.1) as i32),
             true
         ).expect("Could not create video writer");
-        let output_video = RwLock::new(output_video);
+        let output_videos = RwLock::new(vec![Mat::default(); frame_amount as usize]);
 
         let mut i = 0;
         let image_dictionary_r = &image_dictionary as *const _ as usize;
-        let output_video_r = &output_video as *const _ as usize;
+        let output_videos_r = &output_videos as *const _ as usize;
         rayon::scope(|s| {
             loop {
                 let mut current_frame = Mat::default();
                 if !target_video.read(&mut current_frame).expect("Could not read frame") {
                     break
                 }
-                i += 1;
                 let fi = i;
                 s.spawn(move |_| {
                     let image_dictionary = unsafe { &*(image_dictionary_r as *const _) };
-                    let output_video = unsafe { &*(output_video_r as *const RwLock<opencv::videoio::VideoWriter>) };
+                    let output_videos = unsafe { &*(output_videos_r as *const RwLock<Vec<Mat>>) };
                     println!("Processing frame #{}", fi);
 
                     if height != 0 && width != 0 {
@@ -171,13 +171,17 @@ fn main() {
 
                     println!("Processing...");
                     let new_image = image_of_image(&image_dictionary, &current_frame);
-                    output_video.write().unwrap().write(&new_image).unwrap();
+                    output_videos.write().unwrap()[fi as usize] = new_image;
                 });
+                i += 1;
             }
         });
+        println!("Writing...");
+        output_videos.read().unwrap().iter().for_each(|m| {
+            output_video.write(m).unwrap();
+        });
         println!("Finished ! Encoded {} frames", i);
-
-        output_video.write().unwrap().release().unwrap();
+        output_video.release().unwrap();
     } else {
         let mut target_image = match opencv::imgcodecs::imread(matches.value_of("TARGET_IMAGE").unwrap(), opencv::imgcodecs::IMREAD_COLOR) {
             Ok(i) => i,
